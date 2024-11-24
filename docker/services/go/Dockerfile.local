@@ -1,0 +1,26 @@
+# ベースイメージとして公式のGoイメージを使用
+FROM golang:1.23.2
+
+# 作業ディレクトリを設定
+WORKDIR /app
+
+# Goモジュールファイルをコピー
+COPY go.mod go.sum ./
+
+# 依存関係をダウンロード
+RUN go mod download
+
+# ソースコードをコピー
+COPY . .
+
+# 環境変数の設定（必要に応じて）
+# ENV GO_ENV=production
+
+# アプリケーションのビルド
+RUN go build -o main ./cmd/server
+
+# アプリケーションのポートを公開
+EXPOSE 8080
+
+# アプリケーションを実行
+CMD ["./main"]

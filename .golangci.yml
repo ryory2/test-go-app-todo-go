@@ -1,0 +1,19 @@
+run:
+  timeout: 5m
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - golint
+    - gofmt
+    - goimports
+    - gocritic
+    - bodyclose
+    - deadcode
+    - varcheck
+    - structcheck
+    - typecheck
+    - unusedparams
+    - dupl
