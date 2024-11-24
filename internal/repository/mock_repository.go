@@ -1,4 +1,4 @@
-// repository/mock_repository.go
+// internal/repository/mock_repository.go
 package repository
 
 import (
@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockTaskRepository is a mock implementation of TaskRepository interface
+// MockTaskRepository は TaskRepository インターフェースのモック実装です
 type MockTaskRepository struct {
 	mock.Mock
 }
