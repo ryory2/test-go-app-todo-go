@@ -1,66 +1,194 @@
 package handler
 
-// 必要なライブラリをインポート
 import (
-	"github.com/gin-gonic/gin"                                  // Ginフレームワークを使用
-	"github.com/go-playground/validator/v10"                    // 入力バリデーション用のライブラリ
-	"github.com/ryory2/test-go-app-todo-go/internal/repository" // データベース操作を扱うリポジトリ
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
+	"github.com/ryory2/test-go-app-todo-go/internal/model"
+	"github.com/ryory2/test-go-app-todo-go/internal/repository"
 )
 
 // TaskHandler構造体
 type TaskHandler struct {
-	// repository: データベース操作のロジックを呼び出すための依存
-	repo repository.TaskRepository
-
-	// validate: 入力値を検証するためのライブラリインスタンス
+	repo     repository.TaskRepository
 	validate *validator.Validate
 }
 
-// TaskHandler構造体のインスタンスを作成する関数
-// Javaで言えば、@Autowiredで依存関係を注入するようなもの
+// NewTaskHandler関数
 func NewTaskHandler(repo repository.TaskRepository, validate *validator.Validate) *TaskHandler {
-	// TaskHandler構造体を初期化して返す
 	return &TaskHandler{
-		repo:     repo,     // データベース操作ロジックをセット
-		validate: validate, // 入力値のバリデーションロジックをセット
+		repo:     repo,
+		validate: validate,
 	}
 }
 
-// タスク一覧を取得するエンドポイントの処理
+// GetTasksハンドラー
 // HTTP: GET /tasks
 func (h *TaskHandler) GetTasks(c *gin.Context) {
-	// `c *gin.Context`: リクエストとレスポンスのデータを管理
-	// 例: クエリパラメータやJSONレスポンスの処理
-	// 実際のロジックは後で追加
+	// クエリパラメータの取得
+	status := c.Query("status")
+	limitStr := c.DefaultQuery("limit", "10")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	// クエリパラメータを整数に変換
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit parameter"})
+		return
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid offset parameter"})
+		return
+	}
+
+	// リポジトリを使用してタスクを取得
+	tasks, total, err := h.repo.GetTasks(status, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve tasks"})
+		return
+	}
+
+	// レスポンスを送信
+	c.JSON(http.StatusOK, gin.H{
+		"data":  tasks,
+		"total": total,
+	})
 }
 
-// タスクを作成するエンドポイントの処理
+// CreateTaskハンドラー
 // HTTP: POST /tasks
 func (h *TaskHandler) CreateTask(c *gin.Context) {
-	// リクエストのボディに含まれるデータを検証し、新しいタスクを作成
-	// 実際のロジックは後で追加
+	var input model.Task
+
+	// リクエストボディをバインド
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON provided"})
+		return
+	}
+
+	// 入力値のバリデーション
+	if err := h.validate.Struct(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// タスクを作成
+	input.IsCompleted = false // 新規作成時は未完了とする
+	if err := h.repo.CreateTask(&input); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
+		return
+	}
+
+	// 作成されたタスクを返す
+	c.JSON(http.StatusCreated, gin.H{"data": input})
 }
 
-// 特定のタスクを更新するエンドポイントの処理
+// UpdateTaskハンドラー
 // HTTP: PUT /tasks/{id}
 func (h *TaskHandler) UpdateTask(c *gin.Context) {
-	// `id`はURLパスパラメータとして受け取る
-	// リクエストボディから更新データを取得し、データベースを更新
-	// 実際のロジックは後で追加
+	// URLパラメータからIDを取得
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	// 既存のタスクを取得
+	task, err := h.repo.GetTaskByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		return
+	}
+
+	var input model.Task
+
+	// リクエストボディをバインド
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON provided"})
+		return
+	}
+
+	// 入力値のバリデーション
+	if err := h.validate.Struct(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// タスクのフィールドを更新
+	task.Title = input.Title
+	task.Description = input.Description
+	task.DueDate = input.DueDate
+	task.IsCompleted = input.IsCompleted
+	task.UpdatedAt = time.Now()
+
+	// タスクを更新
+	if err := h.repo.UpdateTask(task); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update task"})
+		return
+	}
+
+	// 更新されたタスクを返す
+	c.JSON(http.StatusOK, gin.H{"data": task})
 }
 
-// 特定のタスクを削除するエンドポイントの処理
+// DeleteTaskハンドラー
 // HTTP: DELETE /tasks/{id}
 func (h *TaskHandler) DeleteTask(c *gin.Context) {
-	// `id`はURLパスパラメータとして受け取る
-	// データベースから指定されたタスクを削除
-	// 実際のロジックは後で追加
+	// URLパラメータからIDを取得
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	// 既存のタスクを取得
+	task, err := h.repo.GetTaskByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		return
+	}
+
+	// タスクを削除
+	if err := h.repo.DeleteTask(task); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete task"})
+		return
+	}
+
+	// 削除成功のレスポンスを送信
+	c.JSON(http.StatusOK, gin.H{"message": "Task deleted successfully"})
 }
 
-// タスクの完了状態を切り替えるエンドポイントの処理
+// ToggleTaskハンドラー
 // HTTP: PATCH /tasks/{id}/toggle
 func (h *TaskHandler) ToggleTask(c *gin.Context) {
-	// `id`はURLパスパラメータとして受け取る
-	// 指定されたタスクの完了フラグをトグル
-	// 実際のロジックは後で追加
+	// URLパラメータからIDを取得
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	// 既存のタスクを取得
+	task, err := h.repo.GetTaskByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		return
+	}
+
+	// タスクの完了状態をトグル
+	if err := h.repo.ToggleTaskCompletion(task); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to toggle task completion"})
+		return
+	}
+
+	// 更新されたタスクを返す
+	c.JSON(http.StatusOK, gin.H{"data": task})
 }
