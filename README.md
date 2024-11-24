@@ -63,5 +63,12 @@ touch tests/task_service_test.go
 ### Lintの実行
 golangci-lint run
 
-### build
-./cmd/myapp
+
+
+
+
+
+
+## ユニットテスト
+touch internal/repository/mock_repository.go
+touch internal/handler/task_test.go
